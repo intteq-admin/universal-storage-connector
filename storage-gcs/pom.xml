@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.intteq</groupId>
+        <artifactId>universal-storage-connector</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>storage-gcs</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Universal Storage - Google Cloud Storage</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.intteq</groupId>
+            <artifactId>storage-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-storage</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
