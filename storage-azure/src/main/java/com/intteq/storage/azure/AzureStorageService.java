@@ -6,6 +6,7 @@ import com.intteq.storage.core.ObjectStorageService;
 import com.intteq.storage.core.PreSignedUpload;
 import com.intteq.storage.core.exception.PreSignedUrlGenerationException;
 import com.intteq.storage.core.exception.StorageDeleteException;
+import com.intteq.storage.core.util.MimeTypeUtil;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -16,8 +17,9 @@ import java.util.UUID;
 public class AzureStorageService implements ObjectStorageService {
 
     /**
-     * Default long-lived read expiry.
-     * Azure REQUIRES an expiry; this is effectively "permanent" for most systems.
+     * Default read URL expiry.
+     * Azure Blob Storage requires an explicit expiry for SAS tokens.
+     * This default provides short-lived access and is NOT permanent.
      */
     private static final Duration DEFAULT_READ_EXPIRY = Duration.ofDays(1); // 1 day
 
@@ -42,7 +44,7 @@ public class AzureStorageService implements ObjectStorageService {
             Duration expiry
     ) {
         try {
-            String fileName = UUID.randomUUID() + getExtension(contentType);
+            String fileName = UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
             String blobName = directory + "/" + fileName;
 
             BlobClient blobClient = containerClient.getBlobClient(blobName);
@@ -148,14 +150,4 @@ public class AzureStorageService implements ObjectStorageService {
         }
     }
 
-    // =========================================================
-    // Utils
-    // =========================================================
-
-    private String getExtension(String contentType) {
-        if (contentType == null || !contentType.contains("/")) {
-            return ".bin";
-        }
-        return "." + contentType.substring(contentType.indexOf('/') + 1);
-    }
 }

@@ -8,4 +8,8 @@ public class PreSignedUrlGenerationException extends StorageException {
     public PreSignedUrlGenerationException(String message, Throwable cause) {
         super(message, cause);
     }
+    public PreSignedUrlGenerationException(String message) {
+        super(message);
+    }
+
 }
