@@ -16,29 +16,36 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequ
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-
-
 /**
  * Amazon S3 implementation of {@link ObjectStorageService}.
  *
- * <p>This implementation uses AWS SDK v2 and supports:
- * <ul>
- *   <li>V4 pre-signed PUT URLs for uploads</li>
- *   <li>V4 pre-signed GET URLs for reads</li>
- *   <li>Private bucket access (default)</li>
- * </ul>
+ * <p>This implementation uses AWS SDK v2 and generates
+ * <strong>pre-signed URLs</strong> for both upload and read operations.
+ * Buckets are assumed to be private.
  *
- * <p>All file URLs returned by this service are signed and time-limited.
- * Public bucket access is not assumed.
+ * <h3>Expiry handling</h3>
+ * <ul>
+ *   <li>If an explicit expiry is provided, it is used</li>
+ *   <li>If {@code null}, zero, or negative, a safe default is applied</li>
+ * </ul>
  */
 public class S3StorageService implements ObjectStorageService {
 
-    private final Duration defaultReadExpiry;
+    private static final Duration FALLBACK_EXPIRY = Duration.ofHours(1);
 
     private final S3Client s3Client;
     private final S3Presigner presigner;
     private final String bucket;
+    private final Duration defaultReadExpiry;
 
+    /**
+     * Creates a new {@code S3StorageService}.
+     *
+     * @param s3Client          S3 client
+     * @param presigner        S3 presigner
+     * @param bucket           S3 bucket name
+     * @param defaultReadExpiry default expiry for signed read URLs
+     */
     public S3StorageService(
             S3Client s3Client,
             S3Presigner presigner,
@@ -48,20 +55,13 @@ public class S3StorageService implements ObjectStorageService {
         this.s3Client = s3Client;
         this.presigner = presigner;
         this.bucket = bucket;
-        this.defaultReadExpiry = defaultReadExpiry;
+        this.defaultReadExpiry = normalizeExpiry(defaultReadExpiry);
     }
 
-    /**
-     * Generates a pre-signed upload URL (PUT) for Amazon S3.
-     *
-     * <p>The Content-Type is included in the signature and must be used
-     * exactly as provided when uploading the object.
-     *
-     * @param directory   logical directory/prefix
-     * @param contentType MIME content type of the object
-     * @param expiry      expiry duration for the upload URL
-     * @return a {@link PreSignedUpload} descriptor
-     */
+    // =========================================================
+    // Upload (PUT pre-signed URL)
+    // =========================================================
+
     @Override
     public PreSignedUpload generateUploadUrl(
             String directory,
@@ -69,28 +69,30 @@ public class S3StorageService implements ObjectStorageService {
             Duration expiry
     ) {
         try {
+            Duration effectiveExpiry = normalizeExpiry(expiry);
+
             String fileName =
                     UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
 
             String objectKey = directory + "/" + fileName;
 
-            PutObjectRequest putObjectRequest =
+            PutObjectRequest putRequest =
                     PutObjectRequest.builder()
                             .bucket(bucket)
                             .key(objectKey)
                             .contentType(contentType)
                             .build();
 
-            PresignedPutObjectRequest presignedRequest =
+            PresignedPutObjectRequest presignedPut =
                     presigner.presignPutObject(p -> p
-                            .signatureDuration(expiry)
-                            .putObjectRequest(putObjectRequest)
+                            .putObjectRequest(putRequest)
+                            .signatureDuration(effectiveExpiry)
                     );
 
             return PreSignedUpload.builder()
-                    .uploadUrl(presignedRequest.url().toString())
+                    .uploadUrl(presignedPut.url().toString())
                     .fileName(fileName)
-                    .fileUrl(getFileUrl(directory, fileName, expiry))
+                    .fileUrl(generateReadUrl(directory, fileName))
                     .headers(Map.of(
                             "Content-Type", contentType
                     ))
@@ -98,33 +100,27 @@ public class S3StorageService implements ObjectStorageService {
 
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate S3 pre-signed upload URL",
+                    "Failed to generate S3 upload URL",
                     ex
             );
         }
     }
 
+    // =========================================================
+    // Read (GET pre-signed URL)
+    // =========================================================
+
     /**
-     * Returns a signed, read-only URL for the object using a default expiry.
-     *
-     * @param directory logical directory/prefix
-     * @param fileName  object name
-     * @return signed read URL
+     * Generates a signed read-only URL using the default expiry.
      */
-    @Override
-    public String getFileUrl(String directory, String fileName, Duration expiry) {
-        Duration effectiveExpiry =
-                (expiry != null ? expiry : defaultReadExpiry);
-        return generateReadUrl(directory, fileName, effectiveExpiry);
+    public String generateReadUrl(String directory, String fileName) {
+        return generateReadUrl(directory, fileName, defaultReadExpiry);
     }
 
     /**
-     * Generates a signed, read-only URL with a custom expiry.
+     * Generates a signed read-only URL with a custom expiry.
      *
-     * @param directory logical directory/prefix
-     * @param fileName  object name
-     * @param expiry    expiry duration
-     * @return signed read URL
+     * @param expiry expiry duration; if {@code null}, default expiry is applied
      */
     public String generateReadUrl(
             String directory,
@@ -132,34 +128,49 @@ public class S3StorageService implements ObjectStorageService {
             Duration expiry
     ) {
         try {
-            GetObjectRequest getObjectRequest =
+            Duration effectiveExpiry = normalizeExpiry(expiry);
+
+            String objectKey = directory + "/" + fileName;
+
+            GetObjectRequest getRequest =
                     GetObjectRequest.builder()
                             .bucket(bucket)
-                            .key(directory + "/" + fileName)
+                            .key(objectKey)
                             .build();
 
-            PresignedGetObjectRequest presignedRequest =
+            PresignedGetObjectRequest presignedGet =
                     presigner.presignGetObject(p -> p
-                            .signatureDuration(expiry)
-                            .getObjectRequest(getObjectRequest)
+                            .getObjectRequest(getRequest)
+                            .signatureDuration(effectiveExpiry)
                     );
 
-            return presignedRequest.url().toString();
+            return presignedGet.url().toString();
 
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate S3 pre-signed read URL",
+                    "Failed to generate S3 read URL",
                     ex
             );
         }
     }
 
-    /**
-     * Deletes an object from the S3 bucket.
-     *
-     * @param directory logical directory/prefix
-     * @param fileName  object name
-     */
+    // =========================================================
+    // Public API
+    // =========================================================
+
+    @Override
+    public String getFileUrl(
+            String directory,
+            String fileName,
+            Duration expiry
+    ) {
+        return generateReadUrl(directory, fileName, expiry);
+    }
+
+    // =========================================================
+    // Delete
+    // =========================================================
+
     @Override
     public void delete(String directory, String fileName) {
         try {
@@ -171,10 +182,30 @@ public class S3StorageService implements ObjectStorageService {
             );
         } catch (Exception ex) {
             throw new StorageDeleteException(
-                    "Failed to delete object from S3: " + fileName,
+                    "Failed to delete S3 object: " + fileName,
                     ex
             );
         }
+    }
+
+    // =========================================================
+    // Utility
+    // =========================================================
+
+    /**
+     * Normalizes an expiry duration.
+     *
+     * <p>If the provided value is {@code null}, zero, or negative,
+     * a safe fallback expiry is returned.
+     *
+     * @param expiry candidate expiry
+     * @return non-null, positive expiry
+     */
+    private static Duration normalizeExpiry(Duration expiry) {
+        if (expiry == null || expiry.isZero() || expiry.isNegative()) {
+            return FALLBACK_EXPIRY;
+        }
+        return expiry;
     }
 }
 

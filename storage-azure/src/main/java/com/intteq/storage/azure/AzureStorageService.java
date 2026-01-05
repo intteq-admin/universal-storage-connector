@@ -14,24 +14,44 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Azure Blob Storage implementation of {@link ObjectStorageService}.
+ *
+ * <p>This implementation supports private containers and always returns
+ * signed, time-limited SAS URLs for read and upload operations.
+ *
+ * <h3>Expiry handling</h3>
+ * <ul>
+ *   <li>If an explicit expiry is provided, it is used</li>
+ *   <li>If {@code null}, zero, or negative, a safe default is applied</li>
+ * </ul>
+ */
 public class AzureStorageService implements ObjectStorageService {
 
-    /**
-     * Default read URL expiry.
-     * Azure Blob Storage requires an explicit expiry for SAS tokens.
-     * This default provides short-lived access and is NOT permanent.
-     */
+    private static final Duration FALLBACK_EXPIRY = Duration.ofHours(1);
 
     private final BlobContainerClient containerClient;
     private final Duration defaultReadExpiry;
 
-    public AzureStorageService(String connectionString, String container, Duration defaultReadExpiry) {
+    /**
+     * Creates a new {@code AzureStorageService}.
+     *
+     * @param connectionString Azure storage connection string
+     * @param container        container name
+     * @param defaultReadExpiry default expiry for signed read URLs
+     */
+    public AzureStorageService(
+            String connectionString,
+            String container,
+            Duration defaultReadExpiry
+    ) {
         this.containerClient =
                 new BlobContainerClientBuilder()
                         .connectionString(connectionString)
                         .containerName(container)
                         .buildClient();
-        this.defaultReadExpiry = defaultReadExpiry;
+
+        this.defaultReadExpiry = normalizeExpiry(defaultReadExpiry);
     }
 
     // =========================================================
@@ -45,9 +65,12 @@ public class AzureStorageService implements ObjectStorageService {
             Duration expiry
     ) {
         try {
-            String fileName = UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
-            String blobName = directory + "/" + fileName;
+            Duration effectiveExpiry = normalizeExpiry(expiry);
 
+            String fileName =
+                    UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
+
+            String blobName = directory + "/" + fileName;
             BlobClient blobClient = containerClient.getBlobClient(blobName);
 
             BlobSasPermission uploadPermission = new BlobSasPermission()
@@ -56,17 +79,17 @@ public class AzureStorageService implements ObjectStorageService {
 
             BlobServiceSasSignatureValues uploadSas =
                     new BlobServiceSasSignatureValues(
-                            OffsetDateTime.now().plus(expiry),
+                            OffsetDateTime.now().plus(effectiveExpiry),
                             uploadPermission
                     );
 
             String uploadUrl =
-                    blobClient.getBlobUrl() + "?" + blobClient.generateSas(uploadSas);
+                    blobClient.getBlobUrl() + "?" +
+                            blobClient.generateSas(uploadSas);
 
             return PreSignedUpload.builder()
                     .uploadUrl(uploadUrl)
                     .fileName(fileName)
-                    // IMPORTANT: return a VIEWABLE link, not raw blob URL
                     .fileUrl(generateReadUrl(directory, fileName))
                     .headers(Map.of(
                             "x-ms-blob-type", "BlockBlob"
@@ -82,19 +105,20 @@ public class AzureStorageService implements ObjectStorageService {
     }
 
     // =========================================================
-    // View (GET SAS) — REQUIRED for private container
+    // Read (GET SAS)
     // =========================================================
 
     /**
-     * Generates a long-lived, read-only, viewable URL.
-     * Container remains PRIVATE.
+     * Generates a signed read-only URL using the default expiry.
      */
     public String generateReadUrl(String directory, String fileName) {
         return generateReadUrl(directory, fileName, defaultReadExpiry);
     }
 
     /**
-     * Generates a time-limited, read-only SAS URL.
+     * Generates a signed read-only URL with a custom expiry.
+     *
+     * @param expiry expiry duration; if {@code null}, default expiry is used
      */
     public String generateReadUrl(
             String directory,
@@ -102,6 +126,8 @@ public class AzureStorageService implements ObjectStorageService {
             Duration expiry
     ) {
         try {
+            Duration effectiveExpiry = normalizeExpiry(expiry);
+
             String blobName = directory + "/" + fileName;
             BlobClient blobClient = containerClient.getBlobClient(blobName);
 
@@ -110,11 +136,12 @@ public class AzureStorageService implements ObjectStorageService {
 
             BlobServiceSasSignatureValues readSas =
                     new BlobServiceSasSignatureValues(
-                            OffsetDateTime.now().plus(expiry),
+                            OffsetDateTime.now().plus(effectiveExpiry),
                             readPermission
                     );
 
-            return blobClient.getBlobUrl() + "?" + blobClient.generateSas(readSas);
+            return blobClient.getBlobUrl() + "?" +
+                    blobClient.generateSas(readSas);
 
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
@@ -125,14 +152,16 @@ public class AzureStorageService implements ObjectStorageService {
     }
 
     // =========================================================
-    // Raw URL (NOT viewable when container is private)
+    // Public API
     // =========================================================
 
     @Override
-    public String getFileUrl(String directory, String fileName, Duration expiry) {
-        Duration effectiveExpiry =
-                (expiry != null ? expiry : defaultReadExpiry);
-        return generateReadUrl(directory, fileName, effectiveExpiry);
+    public String getFileUrl(
+            String directory,
+            String fileName,
+            Duration expiry
+    ) {
+        return generateReadUrl(directory, fileName, expiry);
     }
 
     // =========================================================
@@ -153,4 +182,20 @@ public class AzureStorageService implements ObjectStorageService {
         }
     }
 
+    // =========================================================
+    // Utility
+    // =========================================================
+
+    /**
+     * Normalizes an expiry duration.
+     *
+     * <p>If the provided value is {@code null}, zero, or negative,
+     * a safe fallback expiry is returned.
+     */
+    private static Duration normalizeExpiry(Duration expiry) {
+        if (expiry == null || expiry.isZero() || expiry.isNegative()) {
+            return FALLBACK_EXPIRY;
+        }
+        return expiry;
+    }
 }
