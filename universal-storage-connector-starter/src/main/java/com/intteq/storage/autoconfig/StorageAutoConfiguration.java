@@ -108,7 +108,8 @@ public class StorageAutoConfiguration {
         return new S3StorageService(
                 s3Client,
                 presigner,
-                bucket
+                bucket,
+                props.getReadUrlExpiry()
         );
     }
 
@@ -153,7 +154,7 @@ public class StorageAutoConfiguration {
 
         log.info("Initialized Azure Blob Storage provider for container '{}'", container);
 
-        return new AzureStorageService(connectionString, container);
+        return new AzureStorageService(connectionString, container, props.getReadUrlExpiry());
     }
 
     // =========================================================
@@ -185,7 +186,7 @@ public class StorageAutoConfiguration {
 
         log.info("Initialized GCS storage provider for bucket '{}'", bucket);
 
-        return new GcsStorageService(bucket, credentialsPath);
+        return new GcsStorageService(bucket, credentialsPath, props.getReadUrlExpiry());
     }
 
     // =========================================================

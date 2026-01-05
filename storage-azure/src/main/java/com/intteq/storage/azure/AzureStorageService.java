@@ -21,16 +21,17 @@ public class AzureStorageService implements ObjectStorageService {
      * Azure Blob Storage requires an explicit expiry for SAS tokens.
      * This default provides short-lived access and is NOT permanent.
      */
-    private static final Duration DEFAULT_READ_EXPIRY = Duration.ofDays(1); // 1 day
 
     private final BlobContainerClient containerClient;
+    private final Duration defaultReadExpiry;
 
-    public AzureStorageService(String connectionString, String container) {
+    public AzureStorageService(String connectionString, String container, Duration defaultReadExpiry) {
         this.containerClient =
                 new BlobContainerClientBuilder()
                         .connectionString(connectionString)
                         .containerName(container)
                         .buildClient();
+        this.defaultReadExpiry = defaultReadExpiry;
     }
 
     // =========================================================
@@ -89,7 +90,7 @@ public class AzureStorageService implements ObjectStorageService {
      * Container remains PRIVATE.
      */
     public String generateReadUrl(String directory, String fileName) {
-        return generateReadUrl(directory, fileName, DEFAULT_READ_EXPIRY);
+        return generateReadUrl(directory, fileName, defaultReadExpiry);
     }
 
     /**
@@ -128,8 +129,10 @@ public class AzureStorageService implements ObjectStorageService {
     // =========================================================
 
     @Override
-    public String getFileUrl(String directory, String fileName) {
-        return generateReadUrl(directory, fileName);
+    public String getFileUrl(String directory, String fileName, Duration expiry) {
+        Duration effectiveExpiry =
+                (expiry != null ? expiry : defaultReadExpiry);
+        return generateReadUrl(directory, fileName, effectiveExpiry);
     }
 
     // =========================================================

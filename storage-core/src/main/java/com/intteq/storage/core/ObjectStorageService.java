@@ -25,13 +25,21 @@ public interface ObjectStorageService {
     );
 
     /**
+     * Returns a file URL using the default configured expiry.
+     */
+    default String getFileUrl(String directory, String fileName) {
+        return getFileUrl(directory, fileName, null);
+    }
+
+
+    /**
      * Returns the publicly accessible URL of a stored file.
      *
      * @param directory logical directory (prefix)
      * @param fileName  stored file name
      * @return public file URL
      */
-    String getFileUrl(String directory, String fileName);
+    String getFileUrl(String directory, String fileName, Duration expiry);
 
     /**
      * Deletes a file from object storage.

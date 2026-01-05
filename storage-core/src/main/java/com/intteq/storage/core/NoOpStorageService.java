@@ -29,7 +29,7 @@ public class NoOpStorageService implements ObjectStorageService {
     }
 
     @Override
-    public String getFileUrl(String directory, String fileName) {
+    public String getFileUrl(String directory, String fileName, Duration expiry) {
         log.error("File URL requested but no storage provider is configured");
         throw new IllegalStateException(
                 "Storage is not configured. File access is unavailable."

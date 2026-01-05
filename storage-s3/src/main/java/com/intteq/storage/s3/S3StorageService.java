@@ -33,10 +33,7 @@ import java.util.UUID;
  */
 public class S3StorageService implements ObjectStorageService {
 
-    /**
-     * Default expiry for signed read URLs.
-     */
-    private static final Duration DEFAULT_READ_EXPIRY = Duration.ofDays(1);
+    private final Duration defaultReadExpiry;
 
     private final S3Client s3Client;
     private final S3Presigner presigner;
@@ -45,11 +42,13 @@ public class S3StorageService implements ObjectStorageService {
     public S3StorageService(
             S3Client s3Client,
             S3Presigner presigner,
-            String bucket
+            String bucket,
+            Duration defaultReadExpiry
     ) {
         this.s3Client = s3Client;
         this.presigner = presigner;
         this.bucket = bucket;
+        this.defaultReadExpiry = defaultReadExpiry;
     }
 
     /**
@@ -91,7 +90,7 @@ public class S3StorageService implements ObjectStorageService {
             return PreSignedUpload.builder()
                     .uploadUrl(presignedRequest.url().toString())
                     .fileName(fileName)
-                    .fileUrl(getFileUrl(directory, fileName))
+                    .fileUrl(getFileUrl(directory, fileName, expiry))
                     .headers(Map.of(
                             "Content-Type", contentType
                     ))
@@ -113,8 +112,10 @@ public class S3StorageService implements ObjectStorageService {
      * @return signed read URL
      */
     @Override
-    public String getFileUrl(String directory, String fileName) {
-        return generateReadUrl(directory, fileName, DEFAULT_READ_EXPIRY);
+    public String getFileUrl(String directory, String fileName, Duration expiry) {
+        Duration effectiveExpiry =
+                (expiry != null ? expiry : defaultReadExpiry);
+        return generateReadUrl(directory, fileName, effectiveExpiry);
     }
 
     /**

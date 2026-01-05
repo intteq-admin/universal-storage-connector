@@ -39,7 +39,7 @@ public class GcsStorageService implements ObjectStorageService {
      * <p>Google Cloud Storage requires an explicit expiry for signed URLs.
      * This value provides short-lived access and is NOT permanent.
      */
-    private static final Duration DEFAULT_READ_EXPIRY = Duration.ofDays(1);
+    private final Duration defaultReadExpiry;
 
     private final Storage storage;
     private final String bucket;
@@ -54,7 +54,7 @@ public class GcsStorageService implements ObjectStorageService {
      * @throws RuntimeException if credentials cannot be loaded or the client
      *                          cannot be initialized
      */
-    public GcsStorageService(String bucket, String credentialsPath) {
+    public GcsStorageService(String bucket, String credentialsPath, Duration defaultReadExpiry) {
         try (FileInputStream inputStream =
                      new FileInputStream(credentialsPath)) {
 
@@ -68,6 +68,8 @@ public class GcsStorageService implements ObjectStorageService {
                             .getService();
 
             this.bucket = bucket;
+
+            this.defaultReadExpiry = defaultReadExpiry;
 
         } catch (Exception ex) {
             throw new RuntimeException(
@@ -145,7 +147,7 @@ public class GcsStorageService implements ObjectStorageService {
      * @return signed read URL
      */
     public String generateReadUrl(String directory, String fileName) {
-        return generateReadUrl(directory, fileName, DEFAULT_READ_EXPIRY);
+        return generateReadUrl(directory, fileName, defaultReadExpiry);
     }
 
     /**
@@ -216,7 +218,9 @@ public class GcsStorageService implements ObjectStorageService {
      * @return signed read URL
      */
     @Override
-    public String getFileUrl(String directory, String fileName) {
-        return generateReadUrl(directory, fileName);
+    public String getFileUrl(String directory, String fileName, Duration expiry) {
+        Duration effectiveExpiry =
+                (expiry != null ? expiry : defaultReadExpiry);
+        return generateReadUrl(directory, fileName, effectiveExpiry);
     }
 }

@@ -60,6 +60,10 @@ public final class MimeTypeUtil {
             subtype = subtype.substring(0, paramIndex).trim();
         }
 
+        if (subtype.isEmpty()) {
+            return ".bin";
+        }
+
         return "." + subtype;
     }
 }
