@@ -45,6 +45,18 @@ public class AzureStorageService implements ObjectStorageService {
             String container,
             Duration defaultReadExpiry
     ) {
+
+        if (connectionString == null || connectionString.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Azure Blob Storage connectionString must not be null or empty"
+            );
+        }
+
+        if (container == null || container.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Azure Blob Storage container name must not be null or empty"
+            );
+        }
         this.containerClient =
                 new BlobContainerClientBuilder()
                         .connectionString(connectionString)
@@ -66,11 +78,15 @@ public class AzureStorageService implements ObjectStorageService {
     ) {
         try {
             Duration effectiveExpiry = normalizeExpiry(expiry);
+            String dir = normalizeDirectory(directory);
 
             String fileName =
                     UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
 
-            String blobName = directory + "/" + fileName;
+            String blobName = dir.isEmpty()
+                    ? fileName
+                    : dir + "/" + fileName;
+
             BlobClient blobClient = containerClient.getBlobClient(blobName);
 
             BlobSasPermission uploadPermission = new BlobSasPermission()
@@ -87,15 +103,27 @@ public class AzureStorageService implements ObjectStorageService {
                     blobClient.getBlobUrl() + "?" +
                             blobClient.generateSas(uploadSas);
 
+            String readUrl;
+            try {
+                readUrl = generateReadUrl(dir, fileName);
+            } catch (Exception ex) {
+                throw new PreSignedUrlGenerationException(
+                        "Upload URL generated successfully, but failed to generate read URL",
+                        ex
+                );
+            }
+
             return PreSignedUpload.builder()
                     .uploadUrl(uploadUrl)
                     .fileName(fileName)
-                    .fileUrl(generateReadUrl(directory, fileName))
+                    .fileUrl(readUrl)
                     .headers(Map.of(
                             "x-ms-blob-type", "BlockBlob"
                     ))
                     .build();
 
+        } catch (PreSignedUrlGenerationException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
                     "Failed to generate Azure Blob upload URL",
@@ -128,11 +156,19 @@ public class AzureStorageService implements ObjectStorageService {
         try {
             Duration effectiveExpiry = normalizeExpiry(expiry);
 
-            String blobName = directory + "/" + fileName;
-            BlobClient blobClient = containerClient.getBlobClient(blobName);
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
 
-            BlobSasPermission readPermission = new BlobSasPermission()
-                    .setReadPermission(true);
+            String blobName = dir.isEmpty()
+                    ? name
+                    : dir + "/" + name;
+
+            BlobClient blobClient =
+                    containerClient.getBlobClient(blobName);
+
+            BlobSasPermission readPermission =
+                    new BlobSasPermission()
+                            .setReadPermission(true);
 
             BlobServiceSasSignatureValues readSas =
                     new BlobServiceSasSignatureValues(
@@ -143,6 +179,8 @@ public class AzureStorageService implements ObjectStorageService {
             return blobClient.getBlobUrl() + "?" +
                     blobClient.generateSas(readSas);
 
+        } catch (IllegalArgumentException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
                     "Failed to generate Azure Blob read URL",
@@ -170,13 +208,20 @@ public class AzureStorageService implements ObjectStorageService {
 
     @Override
     public void delete(String directory, String fileName) {
+        String dir = normalizeDirectory(directory);
+        String name = requireFileName(fileName);
+
+        String blobPath = dir.isEmpty()
+                ? name
+                : dir + "/" + name;
+
         try {
             containerClient
-                    .getBlobClient(directory + "/" + fileName)
+                    .getBlobClient(blobPath)
                     .delete();
         } catch (Exception ex) {
             throw new StorageDeleteException(
-                    "Failed to delete Azure Blob: " + fileName,
+                    "Failed to delete Azure Blob: " + blobPath,
                     ex
             );
         }
@@ -197,5 +242,21 @@ public class AzureStorageService implements ObjectStorageService {
             return FALLBACK_EXPIRY;
         }
         return expiry;
+    }
+
+    private static String normalizeDirectory(String directory) {
+        if (directory == null || directory.trim().isEmpty()) {
+            return "";
+        }
+        return directory.trim();
+    }
+
+    private static String requireFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "fileName must not be null or empty"
+            );
+        }
+        return fileName.trim();
     }
 }

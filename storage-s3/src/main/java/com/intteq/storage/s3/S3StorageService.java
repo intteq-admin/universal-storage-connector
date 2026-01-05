@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequ
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 /**
  * Amazon S3 implementation of {@link ObjectStorageService}.
@@ -52,6 +53,12 @@ public class S3StorageService implements ObjectStorageService {
             String bucket,
             Duration defaultReadExpiry
     ) {
+
+        Objects.requireNonNull(s3Client, "s3Client must not be null");
+        Objects.requireNonNull(presigner, "presigner must not be null");
+        if (bucket == null || bucket.isBlank()) {
+            throw new IllegalArgumentException("S3 bucket must not be null or empty");
+        }
         this.s3Client = s3Client;
         this.presigner = presigner;
         this.bucket = bucket;

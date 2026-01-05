@@ -78,6 +78,14 @@ public class GcsStorageService implements ObjectStorageService {
             String credentialsPath,
             Duration defaultReadExpiry
     ) {
+
+        if (bucket == null || bucket.isBlank()) {
+            throw new IllegalArgumentException("GCS bucket must not be null or empty");
+        }
+        if (credentialsPath == null || credentialsPath.isBlank()) {
+            throw new IllegalArgumentException("GCS credentialsPath must not be null or empty");
+        }
+
         try (FileInputStream inputStream =
                      new FileInputStream(credentialsPath)) {
 
