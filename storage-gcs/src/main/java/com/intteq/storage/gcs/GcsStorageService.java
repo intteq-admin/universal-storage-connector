@@ -139,16 +139,19 @@ public class GcsStorageService implements ObjectStorageService {
             String contentType,
             Duration expiry
     ) {
+        Duration effectiveExpiry = normalizeExpiry(expiry);
+        String dir = normalizeDirectory(directory);
+
+        String fileName =
+                UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
+
+        String objectPath = dir.isEmpty()
+                ? fileName
+                : dir + "/" + fileName;
+
         try {
-            Duration effectiveExpiry = normalizeExpiry(expiry);
-
-            String fileName =
-                    UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
-
-            String objectName = directory + "/" + fileName;
-
             BlobInfo blobInfo =
-                    BlobInfo.newBuilder(bucket, objectName)
+                    BlobInfo.newBuilder(bucket, objectPath)
                             .setContentType(contentType)
                             .build();
 
@@ -161,18 +164,30 @@ public class GcsStorageService implements ObjectStorageService {
                             Storage.SignUrlOption.withV4Signature()
                     );
 
+            String readUrl;
+            try {
+                readUrl = generateReadUrl(dir, fileName);
+            } catch (Exception ex) {
+                throw new PreSignedUrlGenerationException(
+                        "Upload URL generated successfully, but failed to generate read URL for object: " + objectPath,
+                        ex
+                );
+            }
+
             return PreSignedUpload.builder()
                     .uploadUrl(uploadUrl.toString())
                     .fileName(fileName)
-                    .fileUrl(generateReadUrl(directory, fileName))
+                    .fileUrl(readUrl)
                     .headers(Map.of(
                             "Content-Type", contentType
                     ))
                     .build();
 
+        } catch (PreSignedUrlGenerationException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate GCS upload URL",
+                    "Failed to generate GCS upload URL for object: " + objectPath,
                     ex
             );
         }
@@ -212,11 +227,18 @@ public class GcsStorageService implements ObjectStorageService {
             String fileName,
             Duration expiry
     ) {
-        try {
-            Duration effectiveExpiry = normalizeExpiry(expiry);
+        Duration effectiveExpiry = normalizeExpiry(expiry);
 
+        String dir = normalizeDirectory(directory);
+        String name = requireFileName(fileName);
+
+        String objectPath = dir.isEmpty()
+                ? name
+                : dir + "/" + name;
+
+        try {
             BlobInfo blobInfo =
-                    BlobInfo.newBuilder(bucket, directory + "/" + fileName)
+                    BlobInfo.newBuilder(bucket, objectPath)
                             .build();
 
             return storage.signUrl(
@@ -229,7 +251,7 @@ public class GcsStorageService implements ObjectStorageService {
 
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate GCS read URL",
+                    "Failed to generate GCS read URL for object: " + objectPath,
                     ex
             );
         }
@@ -248,11 +270,18 @@ public class GcsStorageService implements ObjectStorageService {
      */
     @Override
     public void delete(String directory, String fileName) {
+        String dir = normalizeDirectory(directory);
+        String name = requireFileName(fileName);
+
+        String objectPath = dir.isEmpty()
+                ? name
+                : dir + "/" + name;
+
         try {
-            storage.delete(bucket, directory + "/" + fileName);
+            storage.delete(bucket, objectPath);
         } catch (Exception ex) {
             throw new StorageDeleteException(
-                    "Failed to delete GCS object: " + fileName,
+                    "Failed to delete GCS object: " + objectPath,
                     ex
             );
         }
@@ -296,5 +325,19 @@ public class GcsStorageService implements ObjectStorageService {
             return FALLBACK_EXPIRY;
         }
         return expiry;
+    }
+
+    private static String normalizeDirectory(String directory) {
+        if (directory == null || directory.trim().isEmpty()) {
+            return "";
+        }
+        return directory.trim();
+    }
+
+    private static String requireFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new IllegalArgumentException("fileName must not be null or empty");
+        }
+        return fileName.trim();
     }
 }

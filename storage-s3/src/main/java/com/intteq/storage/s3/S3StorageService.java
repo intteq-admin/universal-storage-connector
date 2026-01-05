@@ -75,14 +75,17 @@ public class S3StorageService implements ObjectStorageService {
             String contentType,
             Duration expiry
     ) {
+        Duration effectiveExpiry = normalizeExpiry(expiry);
+        String dir = normalizeDirectory(directory);
+
+        String fileName =
+                UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
+
+        String objectKey = dir.isEmpty()
+                ? fileName
+                : dir + "/" + fileName;
+
         try {
-            Duration effectiveExpiry = normalizeExpiry(expiry);
-
-            String fileName =
-                    UUID.randomUUID() + MimeTypeUtil.toExtension(contentType);
-
-            String objectKey = directory + "/" + fileName;
-
             PutObjectRequest putRequest =
                     PutObjectRequest.builder()
                             .bucket(bucket)
@@ -96,18 +99,30 @@ public class S3StorageService implements ObjectStorageService {
                             .signatureDuration(effectiveExpiry)
                     );
 
+            String readUrl;
+            try {
+                readUrl = generateReadUrl(dir, fileName);
+            } catch (Exception ex) {
+                throw new PreSignedUrlGenerationException(
+                        "Upload URL generated successfully, but failed to generate read URL for S3 object: " + objectKey,
+                        ex
+                );
+            }
+
             return PreSignedUpload.builder()
                     .uploadUrl(presignedPut.url().toString())
                     .fileName(fileName)
-                    .fileUrl(generateReadUrl(directory, fileName))
+                    .fileUrl(readUrl)
                     .headers(Map.of(
                             "Content-Type", contentType
                     ))
                     .build();
 
+        } catch (PreSignedUrlGenerationException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate S3 upload URL",
+                    "Failed to generate S3 upload URL for object: " + objectKey,
                     ex
             );
         }
@@ -134,11 +149,16 @@ public class S3StorageService implements ObjectStorageService {
             String fileName,
             Duration expiry
     ) {
+        Duration effectiveExpiry = normalizeExpiry(expiry);
+
+        String dir = normalizeDirectory(directory);
+        String name = requireFileName(fileName);
+
+        String objectKey = dir.isEmpty()
+                ? name
+                : dir + "/" + name;
+
         try {
-            Duration effectiveExpiry = normalizeExpiry(expiry);
-
-            String objectKey = directory + "/" + fileName;
-
             GetObjectRequest getRequest =
                     GetObjectRequest.builder()
                             .bucket(bucket)
@@ -155,7 +175,7 @@ public class S3StorageService implements ObjectStorageService {
 
         } catch (Exception ex) {
             throw new PreSignedUrlGenerationException(
-                    "Failed to generate S3 read URL",
+                    "Failed to generate S3 read URL for object: " + objectKey,
                     ex
             );
         }
@@ -180,16 +200,23 @@ public class S3StorageService implements ObjectStorageService {
 
     @Override
     public void delete(String directory, String fileName) {
+        String dir = normalizeDirectory(directory);
+        String name = requireFileName(fileName);
+
+        String objectKey = dir.isEmpty()
+                ? name
+                : dir + "/" + name;
+
         try {
             s3Client.deleteObject(
                     DeleteObjectRequest.builder()
                             .bucket(bucket)
-                            .key(directory + "/" + fileName)
+                            .key(objectKey)
                             .build()
             );
         } catch (Exception ex) {
             throw new StorageDeleteException(
-                    "Failed to delete S3 object: " + fileName,
+                    "Failed to delete S3 object: " + objectKey,
                     ex
             );
         }
@@ -213,6 +240,22 @@ public class S3StorageService implements ObjectStorageService {
             return FALLBACK_EXPIRY;
         }
         return expiry;
+    }
+
+    private static String normalizeDirectory(String directory) {
+        if (directory == null || directory.trim().isEmpty()) {
+            return "";
+        }
+        return directory.trim();
+    }
+
+    private static String requireFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "fileName must not be null or empty"
+            );
+        }
+        return fileName.trim();
     }
 }
 
