@@ -222,6 +222,66 @@ public class S3StorageService implements ObjectStorageService {
         }
     }
 
+    @Override
+    public String upload(
+            String directory,
+            String fileName,
+            byte[] content,
+            String contentType,
+            Map<String, String> metadata
+    ) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String objectKey = dir.isEmpty() ? name : dir + "/" + name;
+
+            software.amazon.awssdk.services.s3.model.PutObjectRequest.Builder requestBuilder =
+                    software.amazon.awssdk.services.s3.model.PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(objectKey)
+                            .contentType(contentType);
+
+            if (metadata != null && !metadata.isEmpty()) {
+                requestBuilder.metadata(metadata);
+            }
+
+            s3Client.putObject(
+                    requestBuilder.build(),
+                    software.amazon.awssdk.core.sync.RequestBody.fromBytes(content)
+            );
+
+            return generateReadUrl(dir, name);
+        } catch (Exception ex) {
+            throw new com.intteq.storage.core.exception.StorageException(
+                    "Failed to upload to Amazon S3", ex
+            );
+        }
+    }
+
+    @Override
+    public boolean exists(String directory, String fileName) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String objectKey = dir.isEmpty() ? name : dir + "/" + name;
+
+            s3Client.headObject(
+                    software.amazon.awssdk.services.s3.model.HeadObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(objectKey)
+                            .build()
+            );
+            return true;
+        } catch (software.amazon.awssdk.services.s3.model.NoSuchKeyException ex) {
+            return false;
+        } catch (Exception ex) {
+            throw new com.intteq.storage.core.exception.StorageException(
+                    "Failed to check object existence: " + fileName, ex
+            );
+        }
+    }
+
+
     // =========================================================
     // Utility
     // =========================================================
