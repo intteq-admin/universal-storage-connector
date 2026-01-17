@@ -1,13 +1,16 @@
 package com.intteq.storage.azure;
 
 import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.sas.*;
 import com.intteq.storage.core.ObjectStorageService;
 import com.intteq.storage.core.PreSignedUpload;
 import com.intteq.storage.core.exception.PreSignedUrlGenerationException;
 import com.intteq.storage.core.exception.StorageDeleteException;
+import com.intteq.storage.core.exception.StorageException;
 import com.intteq.storage.core.util.MimeTypeUtil;
 
+import java.io.ByteArrayInputStream;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -128,6 +131,69 @@ public class AzureStorageService implements ObjectStorageService {
             throw new PreSignedUrlGenerationException(
                     "Failed to generate Azure Blob upload URL",
                     ex
+            );
+        }
+    }
+
+    // =========================================================
+    // Server-Side Upload
+    // =========================================================
+
+    @Override
+    public String upload(
+            String directory,
+            String fileName,
+            byte[] content,
+            String contentType,
+            Map<String, String> metadata
+    ) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String blobName = dir.isEmpty() ? name : dir + "/" + name;
+
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+
+            BlobHttpHeaders headers = new BlobHttpHeaders()
+                    .setContentType(contentType);
+
+            blobClient.uploadWithResponse(
+                    new ByteArrayInputStream(content),
+                    content.length,
+                    null,
+                    headers,
+                    metadata,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+
+            return generateReadUrl(dir, name);
+        } catch (Exception ex) {
+            throw new StorageException(
+                    "Failed to upload to Azure Blob Storage", ex
+            );
+        }
+
+    }
+
+    // =========================================================
+    // Check Existence
+    // =========================================================
+
+    @Override
+    public boolean exists(String directory, String fileName) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String blobName = dir.isEmpty() ? name : dir + "/" + name;
+
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+            return blobClient.exists();
+        } catch (Exception ex) {
+            throw new StorageException(
+                    "Failed to check blob existence: " + fileName, ex
             );
         }
     }
