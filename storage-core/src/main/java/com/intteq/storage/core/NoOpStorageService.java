@@ -5,6 +5,7 @@ import com.intteq.storage.core.exception.StorageDeleteException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Fallback {@link ObjectStorageService} used when no real
@@ -43,4 +44,21 @@ public class NoOpStorageService implements ObjectStorageService {
                 "Storage is not configured. Delete operation is unavailable."
         );
     }
+
+    @Override
+    public String upload(
+            String directory,
+            String fileName,
+            byte[] content,
+            String contentType,
+            Map<String, String> metadata
+    ) {
+        return "";
+    }
+
+    @Override
+    public boolean exists(String directory, String fileName) {
+        return false;
+    }
+
 }
