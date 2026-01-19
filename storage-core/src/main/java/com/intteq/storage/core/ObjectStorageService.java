@@ -39,7 +39,7 @@ public interface ObjectStorageService {
      * @param directory logical directory (prefix)
      * @param fileName  stored file name
      * @param expiry    duration for which the URL remains valid (null for default)
-     * @return public file URL
+     * @return` signed read URL of the uploaded file (time-limited; uses provider default expiry)
      */
     String getFileUrl(String directory, String fileName, Duration expiry);
 
@@ -62,7 +62,7 @@ public interface ObjectStorageService {
      * @param content     file content as byte array
      * @param contentType MIME type of the file (e.g., "application/pdf", "image/jpeg")
      * @param metadata    optional metadata key-value pairs
-     * @return public URL of the uploaded file
+     * @return` signed read URL of the uploaded file (time-limited; uses provider default expiry)
      * @throws com.intteq.storage.core.exception.StorageException
      *         if upload fails
      */

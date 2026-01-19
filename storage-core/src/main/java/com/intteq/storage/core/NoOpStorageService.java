@@ -2,6 +2,7 @@ package com.intteq.storage.core;
 
 import com.intteq.storage.core.exception.PreSignedUrlGenerationException;
 import com.intteq.storage.core.exception.StorageDeleteException;
+import com.intteq.storage.core.exception.StorageException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -53,12 +54,19 @@ public class NoOpStorageService implements ObjectStorageService {
             String contentType,
             Map<String, String> metadata
     ) {
-        return "";
+        log.error("Upload attempted but no storage provider is configured");
+        throw new StorageException(
+                "Storage is not configured. Upload operation is unavailable."
+        );
     }
 
     @Override
     public boolean exists(String directory, String fileName) {
-        return false;
+        log.error("Exists check attempted but no storage provider is configured");
+        throw new StorageException(
+                "Storage is not configured. Exists check is unavailable."
+        );
     }
+
 
 }
