@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.intteq</groupId>
 	<artifactId>universal-storage-connector</artifactId>
-	<version>1.0.0</version>
+	<version>1.0.1</version>
 	<packaging>pom</packaging>
 	<name>universal storage connector</name>
 	<description>A unified Java &amp; Spring Boot library that abstracts Amazon S3, Azure Blob Storage, and Google Cloud Storage behind a single, configurable API with support for pre-signed upload and view URLs.</description>

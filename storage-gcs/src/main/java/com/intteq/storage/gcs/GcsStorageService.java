@@ -311,6 +311,52 @@ public class GcsStorageService implements ObjectStorageService {
         return generateReadUrl(directory, fileName, expiry);
     }
 
+    @Override
+    public String upload(
+            String directory,
+            String fileName,
+            byte[] content,
+            String contentType,
+            Map<String, String> metadata
+    ) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String objectPath = dir.isEmpty() ? name : dir + "/" + name;
+
+            BlobInfo.Builder blobInfoBuilder = BlobInfo.newBuilder(bucket, objectPath)
+                    .setContentType(contentType);
+
+            if (metadata != null && !metadata.isEmpty()) {
+                blobInfoBuilder.setMetadata(metadata);
+            }
+
+            storage.create(blobInfoBuilder.build(), content);
+
+            return generateReadUrl(dir, name);
+        } catch (Exception ex) {
+            throw new com.intteq.storage.core.exception.StorageException(
+                    "Failed to upload to Google Cloud Storage", ex
+            );
+        }
+    }
+
+    @Override
+    public boolean exists(String directory, String fileName) {
+        try {
+            String dir = normalizeDirectory(directory);
+            String name = requireFileName(fileName);
+            String objectPath = dir.isEmpty() ? name : dir + "/" + name;
+
+            return storage.get(bucket, objectPath) != null;
+        } catch (Exception ex) {
+            throw new com.intteq.storage.core.exception.StorageException(
+                    "Failed to check object existence: " + fileName, ex
+            );
+        }
+    }
+
+
     /**
      * Normalizes an expiry duration.
      *

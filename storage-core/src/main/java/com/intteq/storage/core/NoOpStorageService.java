@@ -2,9 +2,11 @@ package com.intteq.storage.core;
 
 import com.intteq.storage.core.exception.PreSignedUrlGenerationException;
 import com.intteq.storage.core.exception.StorageDeleteException;
+import com.intteq.storage.core.exception.StorageException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Fallback {@link ObjectStorageService} used when no real
@@ -43,4 +45,28 @@ public class NoOpStorageService implements ObjectStorageService {
                 "Storage is not configured. Delete operation is unavailable."
         );
     }
+
+    @Override
+    public String upload(
+            String directory,
+            String fileName,
+            byte[] content,
+            String contentType,
+            Map<String, String> metadata
+    ) {
+        log.error("Upload attempted but no storage provider is configured");
+        throw new StorageException(
+                "Storage is not configured. Upload operation is unavailable."
+        );
+    }
+
+    @Override
+    public boolean exists(String directory, String fileName) {
+        log.error("Exists check attempted but no storage provider is configured");
+        throw new StorageException(
+                "Storage is not configured. Exists check is unavailable."
+        );
+    }
+
+
 }
